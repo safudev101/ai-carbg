@@ -1,0 +1,1001 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>CarBG.ai — AI Car Background Removal</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet" />
+<style>
+/* ─── Reset & Variables ─── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg:           #0a0a0a;
+  --surface:      #141414;
+  --surface2:     #1c1c1c;
+  --surface3:     #222;
+  --border:       #2a2a2a;
+  --accent:       #4f8ef7;
+  --accent-glow:  rgba(79,142,247,0.22);
+  --success:      #34d399;
+  --error:        #f87171;
+  --warn:         #fbbf24;
+  --text:         #f0f0f0;
+  --muted:        #555;
+  --muted2:       #888;
+  --radius:       12px;
+  --font-head:    'Syne', sans-serif;
+  --font-mono:    'DM Mono', monospace;
+}
+
+html { scroll-behavior: smooth; }
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: 14px;
+  line-height: 1.6;
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+body::before {
+  content: '';
+  position: fixed; inset: 0;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.04'/%3E%3C/svg%3E");
+  pointer-events: none; z-index: 0; opacity: 0.45;
+}
+
+/* ─── Header ─── */
+header {
+  position: sticky; top: 0; z-index: 100;
+  background: rgba(10,10,10,0.88);
+  backdrop-filter: blur(20px);
+  border-bottom: 1px solid var(--border);
+  padding: 0 28px; height: 54px;
+  display: flex; align-items: center; gap: 12px;
+}
+.logo-icon {
+  width: 28px; height: 28px;
+  background: var(--accent); border-radius: 6px;
+  display: grid; place-items: center; flex-shrink: 0;
+}
+.logo-icon svg { width: 15px; height: 15px; fill: white; }
+.logo-name { font-family: var(--font-head); font-weight: 800; font-size: 18px; letter-spacing: -0.5px; }
+.logo-name span { color: var(--accent); }
+.logo-tag { color: var(--muted); font-size: 11px; margin-left: 8px; padding-left: 12px; border-left: 1px solid var(--border); }
+
+/* ─── Main ─── */
+main {
+  position: relative; z-index: 1;
+  max-width: 1140px; margin: 0 auto;
+  padding: 32px 22px 80px;
+}
+
+/* ─── Tool Grid ─── */
+.tool-grid {
+  display: grid;
+  grid-template-columns: 1fr 368px;
+  gap: 20px;
+  align-items: start;
+}
+@media (max-width: 800px) { .tool-grid { grid-template-columns: 1fr; } }
+
+/* ─── Section label ─── */
+.sec-label {
+  font-size: 10px; letter-spacing: 0.12em;
+  text-transform: uppercase; color: var(--muted2);
+  margin-bottom: 8px; display: flex; align-items: center; gap: 8px;
+}
+.sec-label span { flex: 1; height: 1px; background: var(--border); display: block; }
+
+/* ─── LEFT COLUMN ─── */
+.left-col { display: flex; flex-direction: column; gap: 14px; }
+
+/* ─── Main Upload Zone ─── */
+.upload-zone {
+  border: 1.5px dashed var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  min-height: 340px;
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  cursor: pointer;
+  transition: border-color 0.2s, background 0.2s;
+  position: relative; overflow: hidden;
+}
+.upload-zone:hover, .upload-zone.drag-over {
+  border-color: var(--accent); background: #111e30;
+}
+.upload-zone.has-image {
+  border-style: solid; border-color: var(--border);
+}
+.upload-placeholder {
+  display: flex; flex-direction: column;
+  align-items: center; gap: 10px;
+  text-align: center; padding: 28px;
+  pointer-events: none;
+}
+.upload-icon {
+  width: 52px; height: 52px;
+  border: 1.5px dashed var(--muted);
+  border-radius: 50%;
+  display: grid; place-items: center; margin-bottom: 4px;
+}
+.upload-icon svg { width: 20px; height: 20px; stroke: var(--muted); fill: none; }
+.upload-label { font-family: var(--font-head); font-size: 15px; font-weight: 600; }
+.upload-sub { color: var(--muted); font-size: 12px; }
+
+/* ─── Active Preview ─── */
+.upload-preview {
+  display: none; position: absolute; inset: 0;
+}
+.upload-preview img {
+  width: 100%; height: 100%; object-fit: contain; padding: 14px;
+}
+.preview-badge {
+  position: absolute; top: 10px; right: 10px;
+  background: rgba(0,0,0,0.65); color: var(--muted2);
+  font-size: 10px; padding: 3px 9px; border-radius: 20px;
+  backdrop-filter: blur(8px);
+}
+
+/* ─── Image Queue (car thumbnails) ─── */
+.queue-row {
+  display: flex; gap: 8px; flex-wrap: wrap;
+}
+.queue-thumb {
+  width: 72px; height: 54px;
+  border-radius: 8px; overflow: hidden;
+  border: 2px solid var(--border);
+  cursor: pointer; position: relative;
+  flex-shrink: 0;
+  transition: border-color 0.18s, box-shadow 0.18s;
+  background: var(--surface2);
+}
+.queue-thumb img {
+  width: 100%; height: 100%; object-fit: cover; display: block;
+}
+.queue-thumb.active {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-glow);
+}
+.queue-thumb .thumb-del {
+  position: absolute; top: 2px; right: 2px;
+  width: 16px; height: 16px;
+  background: rgba(0,0,0,0.75); border-radius: 50%;
+  display: none; align-items: center; justify-content: center;
+  cursor: pointer; z-index: 2;
+}
+.queue-thumb:hover .thumb-del { display: flex; }
+.thumb-del svg { width: 8px; height: 8px; stroke: #ccc; fill: none; }
+
+/* Add-more button in queue */
+.queue-add {
+  width: 72px; height: 54px;
+  border-radius: 8px; border: 1.5px dashed var(--border);
+  background: var(--surface);
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer; flex-shrink: 0;
+  transition: border-color 0.2s, background 0.2s;
+  color: var(--muted);
+  font-size: 22px; font-weight: 300; line-height: 1;
+}
+.queue-add:hover { border-color: var(--accent); color: var(--accent); background: #111e30; }
+
+/* Hidden inputs */
+#car-input, #bg-input { display: none; }
+
+/* ─── Warning ─── */
+.file-warning {
+  display: none; color: var(--error); font-size: 12px;
+  margin-top: 4px; padding: 7px 12px;
+  background: rgba(248,113,113,0.07);
+  border-radius: 8px; border: 1px solid rgba(248,113,113,0.18);
+}
+
+/* ─── RIGHT COLUMN ─── */
+.right-panel { display: flex; flex-direction: column; gap: 16px; }
+
+/* ─── Background Options ─── */
+.bg-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+.bg-card {
+  border: 1.5px solid var(--border); border-radius: 10px;
+  overflow: hidden; cursor: pointer;
+  transition: border-color 0.18s, box-shadow 0.18s;
+  background: var(--surface); position: relative;
+}
+.bg-card:hover { border-color: #444; }
+.bg-card.selected {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-glow);
+}
+.bg-swatch { height: 60px; width: 100%; display: block; position: relative; overflow: hidden; }
+.swatch-white   { background: linear-gradient(to bottom, #f5f5f5, #e0e0e0); }
+.swatch-grey    { background: linear-gradient(to bottom, #2a2a2a, #404040); }
+.swatch-showroom{ background: linear-gradient(to bottom, #0a0a1a 55%, #1a1a2e); }
+.swatch-outdoor { background: linear-gradient(to bottom, #64a0dc 0%, #b4cfe8 55%, #8c9170 55%, #7a876a 100%); }
+.swatch-custom  { background: var(--surface2); display: flex; align-items: center; justify-content: center; }
+.swatch-custom img { width: 100%; height: 100%; object-fit: cover; position: absolute; inset: 0; }
+.swatch-custom-placeholder {
+  display: flex; flex-direction: column; align-items: center; gap: 3px;
+  color: var(--muted); pointer-events: none; position: relative; z-index: 1;
+}
+.swatch-custom-placeholder svg { width: 18px; height: 18px; stroke: currentColor; fill: none; }
+.swatch-custom-placeholder span { font-size: 10px; }
+
+.bg-card-label {
+  padding: 6px 9px; font-size: 10px; color: var(--text);
+  background: var(--surface2);
+  display: flex; align-items: center; gap: 6px;
+}
+.check-dot {
+  width: 7px; height: 7px; border-radius: 50%;
+  border: 1.5px solid var(--muted); flex-shrink: 0;
+  transition: background 0.18s, border-color 0.18s;
+}
+.bg-card.selected .check-dot { background: var(--accent); border-color: var(--accent); }
+
+/* Custom BG queue — same style but smaller */
+.custom-bg-queue {
+  display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px;
+}
+.custom-bg-thumb {
+  width: 56px; height: 42px;
+  border-radius: 7px; overflow: hidden;
+  border: 2px solid var(--border);
+  cursor: pointer; position: relative; flex-shrink: 0;
+  transition: border-color 0.18s, box-shadow 0.18s;
+}
+.custom-bg-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.custom-bg-thumb.active {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-glow);
+}
+.custom-bg-thumb .thumb-del {
+  position: absolute; top: 2px; right: 2px;
+  width: 14px; height: 14px;
+  background: rgba(0,0,0,0.75); border-radius: 50%;
+  display: none; align-items: center; justify-content: center; cursor: pointer;
+}
+.custom-bg-thumb:hover .thumb-del { display: flex; }
+.custom-bg-add {
+  width: 56px; height: 42px;
+  border-radius: 7px; border: 1.5px dashed var(--border);
+  background: var(--surface);
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer; color: var(--muted); font-size: 18px; font-weight: 300;
+  flex-shrink: 0; transition: border-color 0.18s, color 0.18s;
+}
+.custom-bg-add:hover { border-color: var(--accent); color: var(--accent); }
+
+/* ─── Separator ─── */
+hr.sep { border: none; border-top: 1px solid var(--border); margin: 2px 0; }
+
+/* ─── Process Button ─── */
+.btn-process {
+  width: 100%; padding: 14px;
+  background: var(--accent); color: white;
+  border: none; border-radius: var(--radius);
+  font-family: var(--font-head); font-size: 15px; font-weight: 700;
+  cursor: pointer;
+  transition: opacity 0.18s, transform 0.14s, box-shadow 0.18s;
+  position: relative; overflow: hidden;
+}
+.btn-process::after {
+  content: ''; position: absolute; inset: 0;
+  background: linear-gradient(135deg, rgba(255,255,255,0.12) 0%, transparent 60%);
+  pointer-events: none;
+}
+.btn-process:hover:not(:disabled) {
+  opacity: 0.91; transform: translateY(-1px);
+  box-shadow: 0 6px 22px rgba(79,142,247,0.33);
+}
+.btn-process:active:not(:disabled) { transform: translateY(0); }
+.btn-process:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+
+/* ─── Loading ─── */
+.loading-state {
+  display: none; align-items: center; justify-content: center;
+  gap: 10px; padding: 11px;
+  background: var(--surface); border-radius: var(--radius);
+  color: var(--muted2); font-size: 13px;
+  border: 1px solid var(--border);
+}
+.spinner {
+  width: 16px; height: 16px;
+  border: 2px solid var(--border); border-top-color: var(--accent);
+  border-radius: 50%; animation: spin 0.75s linear infinite; flex-shrink: 0;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ─── Result ─── */
+#result-area {
+  display: none; margin-top: 28px;
+  animation: fadeUp 0.38s ease;
+}
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(14px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.result-header {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 14px; flex-wrap: wrap; gap: 10px;
+}
+.result-title { font-family: var(--font-head); font-size: 17px; font-weight: 700; }
+.result-actions { display: flex; gap: 9px; }
+
+.btn-download {
+  padding: 9px 18px;
+  background: var(--success); color: #0a0a0a;
+  border: none; border-radius: 8px;
+  font-family: var(--font-head); font-size: 13px; font-weight: 700;
+  cursor: pointer; display: flex; align-items: center; gap: 6px;
+  transition: opacity 0.18s, transform 0.14s;
+}
+.btn-download:hover { opacity: 0.87; transform: translateY(-1px); }
+
+.btn-another {
+  padding: 9px 18px;
+  background: transparent; color: var(--muted2);
+  border: 1px solid var(--border); border-radius: 8px;
+  font-family: var(--font-head); font-size: 13px; font-weight: 600;
+  cursor: pointer; transition: color 0.18s, border-color 0.18s;
+}
+.btn-another:hover { color: var(--text); border-color: #444; }
+
+/* ─── Comparison Slider ─── */
+.comparison-wrapper {
+  border-radius: var(--radius); overflow: hidden;
+  position: relative; user-select: none;
+  border: 1px solid var(--border);
+  background: #111; cursor: ew-resize; min-height: 280px;
+}
+.comparison-after, .comparison-before {
+  position: absolute; inset: 0;
+  display: flex; align-items: center; justify-content: center;
+}
+.comparison-after img, .comparison-before img {
+  width: 100%; height: 100%; object-fit: contain; display: block;
+}
+.comparison-before { clip-path: inset(0 50% 0 0); z-index: 2; }
+.slider-line {
+  position: absolute; top: 0; bottom: 0;
+  width: 2px; background: white; left: 50%;
+  transform: translateX(-50%); z-index: 10; pointer-events: none;
+}
+.slider-handle {
+  position: absolute; top: 50%; left: 50%;
+  transform: translate(-50%, -50%);
+  width: 38px; height: 38px;
+  background: white; border-radius: 50%;
+  display: grid; place-items: center;
+  box-shadow: 0 2px 12px rgba(0,0,0,0.5);
+  pointer-events: none; z-index: 11;
+}
+.slider-handle svg { width: 17px; height: 17px; fill: #333; }
+.label-before, .label-after {
+  position: absolute; top: 12px;
+  font-size: 10px; font-family: var(--font-mono);
+  letter-spacing: 0.08em; text-transform: uppercase;
+  padding: 3px 9px; border-radius: 4px; z-index: 20; pointer-events: none;
+}
+.label-before { left: 12px; background: rgba(0,0,0,0.58); color: #bbb; }
+.label-after  { right: 12px; background: rgba(79,142,247,0.78); color: white; }
+
+/* ─── Toast ─── */
+#toast {
+  display: none;
+  position: fixed; bottom: 26px; left: 50%;
+  transform: translateX(-50%);
+  background: #1e1e1e; color: var(--text);
+  padding: 11px 20px; border-radius: 10px;
+  font-size: 13px; z-index: 999;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.45);
+  border: 1px solid var(--border);
+  animation: toastIn 0.28s ease;
+  display: flex; align-items: center; gap: 8px;
+}
+#toast.hidden { display: none; }
+#toast .toast-icon { width: 18px; height: 18px; border-radius: 50%; flex-shrink: 0; display: grid; place-items: center; }
+#toast.error .toast-icon { background: var(--error); }
+#toast.success .toast-icon { background: var(--success); }
+#toast.info .toast-icon { background: var(--accent); }
+@keyframes toastIn {
+  from { opacity: 0; transform: translateX(-50%) translateY(8px); }
+  to   { opacity: 1; transform: translateX(-50%) translateY(0); }
+}
+
+/* ─── Scrollbar ─── */
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: var(--bg); }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+</style>
+</head>
+<body>
+
+<!-- Header -->
+<header>
+  <div class="logo-icon">
+    <svg viewBox="0 0 20 20"><path d="M17 6H3C2.4 6 2 6.4 2 7v9c0 .6.4 1 1 1h14c.6 0 1-.4 1-1V7c0-.6-.4-1-1-1zm-7 7.5c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2zM6 4h8l-1-1H7L6 4z"/></svg>
+  </div>
+  <span class="logo-name">CarBG<span>.ai</span></span>
+  <span class="logo-tag">AI Car Background Removal</span>
+</header>
+
+<main>
+<div class="tool-grid">
+
+  <!-- ════ LEFT: Car Upload + Queue ════ -->
+  <div class="left-col">
+
+    <div class="sec-label">Car Photo <span></span></div>
+
+    <!-- Main drop zone — shows active car preview -->
+    <div class="upload-zone" id="upload-zone">
+      <div class="upload-placeholder" id="upload-placeholder">
+        <div class="upload-icon">
+          <svg viewBox="0 0 24 24" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5"/></svg>
+        </div>
+        <span class="upload-label">Drop car photos here</span>
+        <span class="upload-sub">Multiple files supported · JPG, PNG, WEBP · Max 10MB each</span>
+      </div>
+      <div class="upload-preview" id="upload-preview">
+        <img id="preview-img" src="" alt="Active car" />
+        <span class="preview-badge">active image</span>
+      </div>
+    </div>
+
+    <div class="file-warning" id="file-warning"></div>
+
+    <!-- Car image queue -->
+    <div id="car-queue-wrap" style="display:none">
+      <div class="sec-label" style="margin-bottom:6px">Uploaded Cars — click to select active <span></span></div>
+      <div class="queue-row" id="car-queue">
+        <!-- thumbs injected by JS -->
+        <div class="queue-add" id="car-add-btn" title="Add more car images">+</div>
+      </div>
+    </div>
+
+    <input type="file" id="car-input" accept="image/jpeg,image/png,image/webp" multiple />
+  </div>
+
+  <!-- ════ RIGHT: Backgrounds + Button ════ -->
+  <div class="right-panel">
+
+    <!-- Preset backgrounds -->
+    <div>
+      <div class="sec-label">Select Background <span></span></div>
+      <div class="bg-grid" id="bg-options">
+
+        <div class="bg-card selected" data-bg="studio_white">
+          <div class="bg-swatch swatch-white"></div>
+          <div class="bg-card-label"><span class="check-dot"></span>White Studio</div>
+        </div>
+
+        <div class="bg-card" data-bg="studio_grey">
+          <div class="bg-swatch swatch-grey"></div>
+          <div class="bg-card-label"><span class="check-dot"></span>Grey Studio</div>
+        </div>
+
+        <div class="bg-card" data-bg="showroom">
+          <div class="bg-swatch swatch-showroom"></div>
+          <div class="bg-card-label"><span class="check-dot"></span>Showroom</div>
+        </div>
+
+        <div class="bg-card" data-bg="outdoor">
+          <div class="bg-swatch swatch-outdoor"></div>
+          <div class="bg-card-label"><span class="check-dot"></span>Outdoor</div>
+        </div>
+
+        <!-- Custom background card — always last preset row -->
+        <div class="bg-card" data-bg="custom" id="custom-bg-card" style="grid-column: span 2; cursor:default;">
+          <div class="bg-swatch swatch-custom" id="custom-swatch">
+            <div class="swatch-custom-placeholder" id="custom-placeholder">
+              <svg viewBox="0 0 24 24" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M12 16.5V9.75m0 0l3 3m-3-3l-3 3M6.75 19.5a4.5 4.5 0 01-1.41-8.775 5.25 5.25 0 0110.338-2.32A5.25 5.25 0 0118 18.75H6.75z"/></svg>
+              <span>Upload Custom BG</span>
+            </div>
+            <img id="custom-swatch-img" src="" style="display:none;position:absolute;inset:0;width:100%;height:100%;object-fit:cover;" />
+          </div>
+          <div class="bg-card-label"><span class="check-dot"></span>Custom Background</div>
+        </div>
+
+      </div>
+
+      <!-- Custom BG queue (appears after first upload) -->
+      <div id="custom-bg-queue-wrap" style="display:none; margin-top:8px;">
+        <div class="sec-label" style="margin-bottom:5px">Your Backgrounds — click to select <span></span></div>
+        <div class="custom-bg-queue" id="custom-bg-queue">
+          <!-- thumbs injected by JS -->
+          <div class="custom-bg-add" id="bg-add-btn" title="Add more backgrounds">+</div>
+        </div>
+      </div>
+    </div>
+
+    <hr class="sep" />
+
+    <button class="btn-process" id="btn-process">Remove Background</button>
+
+    <div class="loading-state" id="loading-state">
+      <div class="spinner"></div>
+      <span>Processing… (~10 seconds)</span>
+    </div>
+
+  </div><!-- /right-panel -->
+</div><!-- /tool-grid -->
+
+<!-- ════ Result ════ -->
+<div id="result-area">
+  <div class="result-header">
+    <span class="result-title">Result</span>
+    <div class="result-actions">
+      <button class="btn-another" id="btn-another">Reset</button>
+      <button class="btn-download" id="btn-download">
+        <svg viewBox="0 0 20 20" fill="currentColor" style="width:15px;height:15px"><path d="M10.75 2.75a.75.75 0 00-1.5 0v8.614L6.295 8.235a.75.75 0 10-1.09 1.03l4.25 4.5a.75.75 0 001.09 0l4.25-4.5a.75.75 0 00-1.09-1.03l-2.955 3.129V2.75z"/><path d="M3.5 12.75a.75.75 0 00-1.5 0v2.5A2.75 2.75 0 004.75 18h10.5A2.75 2.75 0 0018 15.25v-2.5a.75.75 0 00-1.5 0v2.5c0 .69-.56 1.25-1.25 1.25H4.75c-.69 0-1.25-.56-1.25-1.25v-2.5z"/></svg>
+        Download
+      </button>
+    </div>
+  </div>
+  <div class="comparison-wrapper" id="comparison-wrapper">
+    <div class="comparison-after"><img id="result-img" src="" alt="Result" /></div>
+    <div class="comparison-before" id="comparison-before"><img id="original-img" src="" alt="Original" /></div>
+    <div class="slider-line" id="slider-line"></div>
+    <div class="slider-handle" id="slider-handle">
+      <svg viewBox="0 0 20 20"><path d="M7 4l-4 6 4 6M13 4l4 6-4 6"/></svg>
+    </div>
+    <span class="label-before">Before</span>
+    <span class="label-after">After</span>
+  </div>
+</div>
+
+</main>
+
+<!-- Hidden inputs -->
+<input type="file" id="bg-input" accept="image/jpeg,image/png,image/webp" multiple />
+
+<!-- Toast -->
+<div id="toast" class="hidden"></div>
+
+<script>
+(function () {
+'use strict';
+
+// ═══════════════════════════════
+// STATE
+// ═══════════════════════════════
+const carImages    = [];   // { file, dataUrl, id }
+const customBgs    = [];   // { file, dataUrl, id }
+let activeCarId    = null;
+let activeBgType   = 'studio_white'; // preset name OR 'custom'
+let activeCustomBgId = null;
+let resultBlobUrl  = null;
+let sliderActive   = false;
+let _idCounter     = 0;
+const uid = () => ++_idCounter;
+
+// ═══════════════════════════════
+// ELEMENTS
+// ═══════════════════════════════
+const uploadZone       = document.getElementById('upload-zone');
+const uploadPlaceh     = document.getElementById('upload-placeholder');
+const uploadPreview    = document.getElementById('upload-preview');
+const previewImg       = document.getElementById('preview-img');
+const carInput         = document.getElementById('car-input');
+const bgInput          = document.getElementById('bg-input');
+const fileWarning      = document.getElementById('file-warning');
+const carQueueWrap     = document.getElementById('car-queue-wrap');
+const carQueue         = document.getElementById('car-queue');
+const carAddBtn        = document.getElementById('car-add-btn');
+const bgOptions        = document.getElementById('bg-options');
+const customBgCard     = document.getElementById('custom-bg-card');
+const customSwatch     = document.getElementById('custom-swatch');
+const customPlaceholder= document.getElementById('custom-placeholder');
+const customSwatchImg  = document.getElementById('custom-swatch-img');
+const customBgQueueWrap= document.getElementById('custom-bg-queue-wrap');
+const customBgQueue    = document.getElementById('custom-bg-queue');
+const bgAddBtn         = document.getElementById('bg-add-btn');
+const btnProcess       = document.getElementById('btn-process');
+const loadingState     = document.getElementById('loading-state');
+const resultArea       = document.getElementById('result-area');
+const resultImg        = document.getElementById('result-img');
+const originalImg      = document.getElementById('original-img');
+const compBefore       = document.getElementById('comparison-before');
+const compWrapper      = document.getElementById('comparison-wrapper');
+const sliderLine       = document.getElementById('slider-line');
+const sliderHandle     = document.getElementById('slider-handle');
+const btnDownload      = document.getElementById('btn-download');
+const btnAnother       = document.getElementById('btn-another');
+const toastEl          = document.getElementById('toast');
+
+// ═══════════════════════════════
+// CAR UPLOAD ZONE
+// ═══════════════════════════════
+uploadZone.addEventListener('click', () => { if (carImages.length === 0) carInput.click(); });
+
+uploadZone.addEventListener('dragover', e => { e.preventDefault(); uploadZone.classList.add('drag-over'); });
+uploadZone.addEventListener('dragleave', () => uploadZone.classList.remove('drag-over'));
+uploadZone.addEventListener('drop', e => {
+  e.preventDefault(); uploadZone.classList.remove('drag-over');
+  addCarFiles(e.dataTransfer.files);
+});
+
+carInput.addEventListener('change', () => { addCarFiles(carInput.files); carInput.value = ''; });
+carAddBtn.addEventListener('click', () => carInput.click());
+
+function addCarFiles(fileList) {
+  let anyAdded = false;
+  for (const file of fileList) {
+    if (!isValidImage(file)) continue;
+    if (file.size > 10 * 1024 * 1024) {
+      showWarning(`"${file.name}" exceeds 10MB and was skipped.`);
+      continue;
+    }
+    const id = uid();
+    const entry = { file, dataUrl: null, id };
+    carImages.push(entry);
+    anyAdded = true;
+    readDataUrl(file, url => {
+      entry.dataUrl = url;
+      renderCarQueue();
+      // First image auto-selected
+      if (activeCarId === null) setActiveCarId(id);
+    });
+  }
+  if (!anyAdded && carImages.length === 0) {
+    showWarning('Please upload a valid JPG, PNG, or WEBP image.');
+  }
+}
+
+function isValidImage(file) {
+  return ['image/jpeg','image/png','image/webp'].includes(file.type);
+}
+
+function readDataUrl(file, cb) {
+  const r = new FileReader();
+  r.onload = e => cb(e.target.result);
+  r.readAsDataURL(file);
+}
+
+function setActiveCarId(id) {
+  activeCarId = id;
+  const entry = carImages.find(c => c.id === id);
+  if (!entry) return;
+  if (entry.dataUrl) {
+    previewImg.src = entry.dataUrl;
+    originalImg.src = entry.dataUrl;
+    uploadPlaceh.style.display  = 'none';
+    uploadPreview.style.display = 'block';
+    uploadZone.classList.add('has-image');
+  }
+  renderCarQueue();
+  resultArea.style.display = 'none';
+}
+
+function renderCarQueue() {
+  // Remove all existing thumbs (not the add button)
+  carQueue.querySelectorAll('.queue-thumb').forEach(el => el.remove());
+
+  carImages.forEach(entry => {
+    if (!entry.dataUrl) return;
+    const div = document.createElement('div');
+    div.className = 'queue-thumb' + (entry.id === activeCarId ? ' active' : '');
+    div.dataset.id = entry.id;
+
+    const img = document.createElement('img');
+    img.src = entry.dataUrl; img.alt = '';
+    div.appendChild(img);
+
+    // Delete button
+    const del = document.createElement('div');
+    del.className = 'thumb-del';
+    del.innerHTML = `<svg viewBox="0 0 10 10"><path d="M2 2l6 6M8 2l-6 6" stroke-width="1.5" stroke-linecap="round"/></svg>`;
+    del.addEventListener('click', e => { e.stopPropagation(); removeCarImage(entry.id); });
+    div.appendChild(del);
+
+    div.addEventListener('click', () => setActiveCarId(entry.id));
+    carQueue.insertBefore(div, carAddBtn);
+  });
+
+  // Show/hide queue row
+  carQueueWrap.style.display = carImages.length > 0 ? 'block' : 'none';
+}
+
+function removeCarImage(id) {
+  const idx = carImages.findIndex(c => c.id === id);
+  if (idx === -1) return;
+  carImages.splice(idx, 1);
+
+  if (activeCarId === id) {
+    // Select first remaining or reset
+    if (carImages.length > 0) {
+      setActiveCarId(carImages[0].id);
+    } else {
+      activeCarId = null;
+      previewImg.src = '';
+      uploadPlaceh.style.display = 'flex';
+      uploadPreview.style.display = 'none';
+      uploadZone.classList.remove('has-image');
+    }
+  }
+  renderCarQueue();
+}
+
+// ═══════════════════════════════
+// PRESET BACKGROUND SELECTION
+// ═══════════════════════════════
+bgOptions.addEventListener('click', e => {
+  const card = e.target.closest('.bg-card[data-bg]');
+  if (!card) return;
+
+  const bg = card.dataset.bg;
+
+  // Custom BG card click → trigger upload picker (only if no custom bgs yet)
+  if (bg === 'custom') {
+    if (customBgs.length === 0) {
+      bgInput.click();
+    }
+    // If there are custom bgs, just select it
+    selectBg('custom');
+    return;
+  }
+
+  selectBg(bg);
+});
+
+function selectBg(type) {
+  activeBgType = type;
+  document.querySelectorAll('.bg-card').forEach(c => c.classList.remove('selected'));
+  const card = document.querySelector(`.bg-card[data-bg="${type}"]`);
+  if (card) card.classList.add('selected');
+}
+
+// ═══════════════════════════════
+// CUSTOM BACKGROUND UPLOAD
+// ═══════════════════════════════
+// Custom BG card triggers file picker
+customBgCard.style.cursor = 'pointer';
+customBgCard.addEventListener('click', e => {
+  if (e.target.closest('.custom-bg-thumb') || e.target.closest('.custom-bg-add')) return;
+  bgInput.click();
+});
+
+bgInput.addEventListener('change', () => { addBgFiles(bgInput.files); bgInput.value = ''; });
+bgAddBtn.addEventListener('click', () => bgInput.click());
+
+function addBgFiles(fileList) {
+  for (const file of fileList) {
+    if (!isValidImage(file)) continue;
+    if (file.size > 20 * 1024 * 1024) {
+      showWarning(`Background "${file.name}" exceeds 20MB and was skipped.`);
+      continue;
+    }
+    const id = uid();
+    const entry = { file, dataUrl: null, id };
+    customBgs.push(entry);
+    readDataUrl(file, url => {
+      entry.dataUrl = url;
+      renderCustomBgQueue();
+      // Auto-select first uploaded bg
+      if (activeCustomBgId === null) setActiveCustomBg(id);
+    });
+  }
+}
+
+function setActiveCustomBg(id) {
+  activeCustomBgId = id;
+  const entry = customBgs.find(b => b.id === id);
+  if (!entry || !entry.dataUrl) return;
+
+  // Update swatch preview
+  customSwatchImg.src = entry.dataUrl;
+  customSwatchImg.style.display = 'block';
+  customPlaceholder.style.display = 'none';
+
+  // Select the custom card
+  selectBg('custom');
+  renderCustomBgQueue();
+}
+
+function renderCustomBgQueue() {
+  customBgQueue.querySelectorAll('.custom-bg-thumb').forEach(el => el.remove());
+
+  customBgs.forEach(entry => {
+    if (!entry.dataUrl) return;
+    const div = document.createElement('div');
+    div.className = 'custom-bg-thumb' + (entry.id === activeCustomBgId ? ' active' : '');
+
+    const img = document.createElement('img');
+    img.src = entry.dataUrl; img.alt = '';
+    div.appendChild(img);
+
+    const del = document.createElement('div');
+    del.className = 'thumb-del';
+    del.innerHTML = `<svg viewBox="0 0 10 10" stroke="white" stroke-width="1.5" stroke-linecap="round"><path d="M2 2l6 6M8 2l-6 6"/></svg>`;
+    del.addEventListener('click', e => { e.stopPropagation(); removeCustomBg(entry.id); });
+    div.appendChild(del);
+
+    div.addEventListener('click', () => setActiveCustomBg(entry.id));
+    customBgQueue.insertBefore(div, bgAddBtn);
+  });
+
+  const hasAny = customBgs.length > 0;
+  customBgQueueWrap.style.display = hasAny ? 'block' : 'none';
+
+  // If no custom bgs, reset swatch
+  if (!hasAny) {
+    customSwatchImg.style.display = 'none';
+    customSwatchImg.src = '';
+    customPlaceholder.style.display = 'flex';
+    activeCustomBgId = null;
+    // Switch back to white studio if currently on custom
+    if (activeBgType === 'custom') selectBg('studio_white');
+  }
+}
+
+function removeCustomBg(id) {
+  const idx = customBgs.findIndex(b => b.id === id);
+  if (idx === -1) return;
+  customBgs.splice(idx, 1);
+
+  if (activeCustomBgId === id) {
+    if (customBgs.length > 0) {
+      setActiveCustomBg(customBgs[0].id);
+    } else {
+      activeCustomBgId = null;
+    }
+  }
+  renderCustomBgQueue();
+}
+
+// ═══════════════════════════════
+// PROCESS
+// ═══════════════════════════════
+btnProcess.addEventListener('click', async () => {
+  if (!activeCarId) { showToast('Please upload a car image first.', 'error'); return; }
+  if (activeBgType === 'custom' && activeCustomBgId === null) {
+    showToast('Please upload a custom background first.', 'error'); return;
+  }
+
+  const carEntry = carImages.find(c => c.id === activeCarId);
+  if (!carEntry) return;
+
+  btnProcess.disabled = true;
+  loadingState.style.display = 'flex';
+  resultArea.style.display = 'none';
+
+  try {
+    const formData = new FormData();
+    formData.append('file', carEntry.file);
+    formData.append('bg_choice', activeBgType);
+
+    if (activeBgType === 'custom' && activeCustomBgId !== null) {
+      const bgEntry = customBgs.find(b => b.id === activeCustomBgId);
+      if (bgEntry) formData.append('custom_bg', bgEntry.file);
+    }
+
+    const response = await fetch('http://localhost:8000/process', {
+      method: 'POST', body: formData,
+    });
+
+    if (!response.ok) {
+      let msg = `Server error (${response.status})`;
+      try { const j = await response.json(); if (j.error) msg = j.error; } catch {}
+      throw new Error(msg);
+    }
+
+    const blob = await response.blob();
+    if (resultBlobUrl) URL.revokeObjectURL(resultBlobUrl);
+    resultBlobUrl = URL.createObjectURL(blob);
+
+    resultImg.src = resultBlobUrl;
+    if (carEntry.dataUrl) originalImg.src = carEntry.dataUrl;
+
+    resultArea.style.display = 'block';
+    resultImg.onload = () => {
+      const h = Math.min(resultImg.naturalHeight, 540);
+      compWrapper.style.height = h + 'px';
+      setSliderPosition(50);
+    };
+    resultArea.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    showToast('Done! Drag the slider to compare.', 'success');
+
+  } catch (err) {
+    showToast('Error: ' + err.message, 'error');
+  } finally {
+    btnProcess.disabled = false;
+    loadingState.style.display = 'none';
+  }
+});
+
+// ═══════════════════════════════
+// BEFORE/AFTER SLIDER
+// ═══════════════════════════════
+function setSliderPosition(pct) {
+  pct = Math.max(0, Math.min(100, pct));
+  compBefore.style.clipPath = `inset(0 ${100-pct}% 0 0)`;
+  sliderLine.style.left    = pct + '%';
+  sliderHandle.style.left  = pct + '%';
+}
+
+function getSliderPct(clientX) {
+  const rect = compWrapper.getBoundingClientRect();
+  return ((clientX - rect.left) / rect.width) * 100;
+}
+
+compWrapper.addEventListener('mousedown', e => { sliderActive = true; setSliderPosition(getSliderPct(e.clientX)); });
+window.addEventListener('mousemove', e => { if (sliderActive) setSliderPosition(getSliderPct(e.clientX)); });
+window.addEventListener('mouseup', () => { sliderActive = false; });
+compWrapper.addEventListener('touchstart', e => { sliderActive = true; setSliderPosition(getSliderPct(e.touches[0].clientX)); }, { passive: true });
+window.addEventListener('touchmove', e => { if (sliderActive) setSliderPosition(getSliderPct(e.touches[0].clientX)); }, { passive: true });
+window.addEventListener('touchend', () => { sliderActive = false; });
+
+// ═══════════════════════════════
+// DOWNLOAD
+// ═══════════════════════════════
+btnDownload.addEventListener('click', () => {
+  if (!resultBlobUrl) return;
+  const a = document.createElement('a');
+  a.href = resultBlobUrl;
+  a.download = 'carbg-result.jpg';
+  a.click();
+});
+
+// ═══════════════════════════════
+// RESET
+// ═══════════════════════════════
+btnAnother.addEventListener('click', () => {
+  carImages.length = 0;
+  customBgs.length = 0;
+  activeCarId = null; activeCustomBgId = null;
+  activeBgType = 'studio_white';
+  resultArea.style.display = 'none';
+  previewImg.src = ''; originalImg.src = '';
+  uploadPlaceh.style.display = 'flex';
+  uploadPreview.style.display = 'none';
+  uploadZone.classList.remove('has-image');
+  carQueueWrap.style.display = 'none';
+  customBgQueueWrap.style.display = 'none';
+  customSwatchImg.src = ''; customSwatchImg.style.display = 'none';
+  customPlaceholder.style.display = 'flex';
+  selectBg('studio_white');
+  renderCarQueue();
+  renderCustomBgQueue();
+  if (resultBlobUrl) { URL.revokeObjectURL(resultBlobUrl); resultBlobUrl = null; }
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+});
+
+// ═══════════════════════════════
+// TOAST & WARNING
+// ═══════════════════════════════
+let toastTimer = null;
+
+function showToast(msg, type = 'info') {
+  toastEl.className = type;
+  const iconSvg = type === 'error'
+    ? `<svg viewBox="0 0 10 10" stroke="white" stroke-width="1.5" stroke-linecap="round" fill="none"><path d="M2 2l6 6M8 2l-6 6"/></svg>`
+    : type === 'success'
+    ? `<svg viewBox="0 0 10 10" stroke="white" stroke-width="1.5" stroke-linecap="round" fill="none"><path d="M1.5 5l2.5 2.5 4.5-4.5"/></svg>`
+    : `<svg viewBox="0 0 10 10" fill="white"><circle cx="5" cy="5" r="1"/><path d="M5 2v1M5 7v1" stroke="white" stroke-linecap="round"/></svg>`;
+  toastEl.innerHTML = `<div class="toast-icon">${iconSvg}</div><span>${msg}</span>`;
+  toastEl.style.display = 'flex';
+  if (toastTimer) clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { toastEl.style.display = 'none'; }, 4000);
+}
+
+function showWarning(msg) {
+  const w = document.getElementById('file-warning');
+  w.textContent = '⚠ ' + msg;
+  w.style.display = 'block';
+  setTimeout(() => { w.style.display = 'none'; }, 5000);
+}
+
+})();
+</script>
+</body>
+</html>
