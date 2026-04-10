@@ -7,3 +7,6 @@ torchvision
 Pillow
 numpy
 opencv-python
+einops
+kornia
+timm
